@@ -83,7 +83,7 @@
             width: 10%; 
             text-align: center;
             padding: 5px; 
-            position: relative; 
+            position: relative; /* ⭐️ 플레이어 절대 위치를 위한 기준점 */
             z-index: 1;
         }
         /* 짝수 행 배경색 */
@@ -97,7 +97,7 @@
             width: 30px;
             height: 30px;
             margin: 0 auto;
-            background-color: #e4dcd3;
+            background-color: #cc0000;
             color: white;
             line-height: 30px;
             text-align: center;
@@ -142,7 +142,7 @@
             position: absolute; 
             top: 0; 
             transform: none; 
-            height: 100%; 
+            /* height: 100%; <- JS에서 동적으로 설정하므로 제거 */
             
             /* 플레이어 너비를 <td> 너비(10%)의 8.5배인 850%로 설정 (전시품 + 해설 컬럼) */
             width: 850%; 
@@ -250,7 +250,7 @@
             .custom-audio-player.active {
                 width: 850%; 
                 left: -750%; 
-                height: 100%; 
+                /* height: 100%; <- JS에서 동적으로 설정하므로 제거 */
                 top: 0;
                 transform: none; 
                 padding: 0 5px; 
@@ -1431,7 +1431,7 @@
             // 인터벌 중지
             stopProgressUpdate(audio.id);
 
-            // 오디오 중지 및 초기화
+            // 오디오 중지 및 초기화 (요청사항 2: 음성 일시정지)
             audio.pause();
             audio.currentTime = 0;
 
@@ -1444,14 +1444,17 @@
             btn.textContent = '▶';
             btn.classList.remove('playing');
             btn.dataset.state = 'paused';
+            
+            // ⭐️ 요청사항 2: 플레이어 최소화 및 인라인 높이 스타일 초기화
+            playerElement.style.height = ''; // 인라인으로 설정된 높이를 제거하여 CSS 기본값(50px)으로 복귀
             playerElement.classList.remove('active');
+            
             if (audioBox && audioBox.classList.contains('audio-box')) {
-                audioBox.classList.remove('hidden'); // 🔊 버튼 다시 표시
+                audioBox.classList.remove('hidden'); // 🔊 버튼 다시 표시 (요청사항 2: 히든된게 다시 나타났으면)
             }
 
             fill.style.width = '0%';
             
-            // 총 재생 시간 다시 설정 (durationchange 이벤트에서 처리되므로 초기화만)
             timeDisplay.textContent = '00:00 / 00:00'; 
             
             currentlyActiveAudio = null;
@@ -1464,13 +1467,14 @@
             const audio = document.getElementById(audioId);
             const fill = playerElement.querySelector('.progress-fill');
             const timeDisplay = playerElement.querySelector('.time-display');
-            const duration = audio.duration;
+            let duration = audio.duration;
 
             if (!isFinite(duration) || duration === 0) {
                  // durationchange 이벤트 리스너를 한 번만 연결하여 로딩 후 업데이트
                 audio.addEventListener('loadedmetadata', function updateDuration() {
-                    if (isFinite(audio.duration) && audio.duration > 0) {
-                        timeDisplay.textContent = `${formatTime(audio.currentTime)} / ${formatTime(audio.duration)}`;
+                    duration = audio.duration; // 로드 후 duration 업데이트
+                    if (isFinite(duration) && duration > 0) {
+                        timeDisplay.textContent = `${formatTime(audio.currentTime)} / ${formatTime(duration)}`;
                         startProgressUpdate(audioId, playerElement);
                     }
                     audio.removeEventListener('loadedmetadata', updateDuration);
@@ -1483,7 +1487,7 @@
 
             // 100ms마다 업데이트
             updateIntervals[audioId] = setInterval(() => {
-                // ⭐️ 추가: 오디오가 일시정지 상태라면 프로그레스바 업데이트를 중단합니다. (안드로이드 이슈 방지)
+                // 오디오가 일시정지 상태라면 프로그레스바 업데이트를 중단합니다.
                 if (audio.paused) {
                     stopProgressUpdate(audioId);
                     return;
@@ -1562,13 +1566,14 @@
             
             const audioToActivate = document.getElementById(audioId);
             const playerToActivate = boxElement.nextElementSibling;
+            const currentTR = boxElement.closest('tr'); // ⭐️ 현재 TR 요소
+            const nextTR = currentTR.nextElementSibling; // ⭐️ 다음 TR 요소
             
             // 5-1. 이미 다른 플레이어가 활성화된 경우: 모두 정리
             if (currentlyActiveAudio && currentlyActiveAudio.id !== audioId) {
                 const prevAudio = currentlyActiveAudio;
                 let prevPlayer = prevAudio.closest('.custom-audio-player');
                 if (prevPlayer) {
-                    prevAudio.pause();
                     resetPlayer(prevAudio, prevPlayer);
                 }
             }
@@ -1577,14 +1582,24 @@
             if (playerToActivate.classList.contains('active')) {
                 // 닫기
                 resetPlayer(audioToActivate, playerToActivate);
-                boxElement.classList.remove('hidden');
             } else {
                 // 활성화
                 playerToActivate.classList.add('active');
                 boxElement.classList.add('hidden'); // 🔊 버튼 숨기기
                 currentlyActiveAudio = audioToActivate;
 
-                // ⭐️ 추가: 오디오 로드를 강제하여 안드로이드 환경의 안정성을 높입니다.
+                // ⭐️ 요청사항 1: 높이 계산 및 적용 (현재 TR + 다음 TR)
+                let totalHeight = currentTR.offsetHeight;
+                
+                // 다음 TR이 있고, 구분선(`separator-row`)이 아니라면 다음 TR의 높이를 더함
+                if (nextTR && !nextTR.classList.contains('separator-row')) {
+                    totalHeight += nextTR.offsetHeight;
+                } 
+                
+                // 인라인 스타일로 높이 설정
+                playerToActivate.style.height = `${totalHeight}px`;
+
+                // 오디오 로드를 강제하여 안드로이드 환경의 안정성을 높입니다.
                 audioToActivate.load(); 
 
                 // 활성화 후 바로 재생 시도
@@ -1592,7 +1607,7 @@
             }
         }
 
-        // 6. 플레이어 외부 클릭 시 닫기
+        // 6. 플레이어 외부 클릭 시 닫기 (요청사항 2)
         function handleOutsideClick(event) {
             if (!currentlyActiveAudio) return;
 
@@ -1612,7 +1627,7 @@
             if (!isInsidePlayer && !isSeeking) {
                 const playerElement = currentlyActiveAudio.closest('.custom-audio-player');
                 if (playerElement) {
-                    currentlyActiveAudio.pause();
+                    // resetPlayer는 오디오 일시정지, 플레이어 최소화, 🔊 아이콘 다시 표시를 모두 처리합니다.
                     resetPlayer(currentlyActiveAudio, playerElement);
                 }
             }
@@ -1633,9 +1648,8 @@
             if (isFinite(audio.duration) && audio.duration > 0) {
                 const seekTime = seekPosition * audio.duration;
                 
-                // 드래그 중에는 currentTime 업데이트는 끝날 때만 하고, UI만 실시간으로 업데이트
+                // 끝났을 때만 실제 시간 적용
                 if (event.type === 'mouseup' || event.type === 'touchend') {
-                     // 끝났을 때만 실제 시간 적용
                     audio.currentTime = seekTime;
                 }
                 
@@ -1647,7 +1661,6 @@
 
         // 드래그 시작 핸들러
         function handleSeekStart(event) {
-            // 재생/일시정지 버튼 클릭 방지 (터치 이벤트의 경우)
             if (event.target.classList.contains('play-pause-btn')) return;
             
             event.stopPropagation();
@@ -1708,11 +1721,8 @@
 
             // 일시정지 상태였다면 재생 버튼으로 상태 유지
             const btn = activePlayer.querySelector('.play-pause-btn');
-            if (audio.paused && btn.dataset.state === 'playing') {
+            if (btn.dataset.state === 'playing') {
                 audio.play(); 
-            } else if (btn.dataset.state === 'playing') {
-                // 재생 중이었으면 다시 시작
-                audio.play();
             } else {
                  // 일시정지 상태 유지
                 audio.pause(); 
@@ -1741,9 +1751,6 @@
             document.addEventListener('touchend', handleOutsideClick); 
         });
 
-        // ⭐️ 안드로이드 호환성 문제 해결을 위해 오디오 컨텍스트 활성화 로직은 제거했습니다.
-        // 대신 오디오를 로드하고 (audio.load()), play()의 Promise 처리를 강화했습니다.
-        // 첫 사용자 상호작용 후 play()가 호출되므로 대부분의 모바일 환경에서 재생이 정상적으로 이루어져야 합니다.
     </script>
 </body>
 </html>
