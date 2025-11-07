@@ -1428,10 +1428,10 @@
         let isSeeking = false; // 드래그 탐색 중인지 여부
         let activePlayer = null; // 현재 탐색 중인 플레이어 (드래그용, 주입된 플레이어 요소)
         
-        // ⭐️ FIX: 탐색 시작 전에 재생 중이었는지 상태 저장 (이 상태를 기반으로 재생 재개 결정)
+        // ⭐️ 재생 상태 복구를 위한 변수
         let wasPlayingBeforeSeek = false; 
 
-        // ⭐️ FIX: 모바일 터치/드래그 후 발생하는 원치 않는 클릭 이벤트를 무시하기 위한 플래그
+        // ⭐️ 모바일 터치/드래그 후 발생하는 원치 않는 클릭 이벤트를 무시하기 위한 플래그
         let blockOutsideClick = false; 
 
         // 1. 시간 포맷 변환 함수
@@ -1514,15 +1514,15 @@
             blockOutsideClick = false; 
         }
 
-        // 4. 재생/일시정지 버튼 클릭 처리 (playerElement는 주입된 복제 요소임)
+        // 4. 재생/일시정지 버튼 클릭 처리 
         function playPauseAudio(event, audioId, playerElement) {
             if (event) { 
-                event.stopPropagation(); // 테이블 행 클릭 이벤트 및 외부 클릭 이벤트 방지
+                event.stopPropagation(); 
             } 
             const audio = document.getElementById(audioId);
             const btn = playerElement.querySelector('.play-pause-btn');
             
-            // 4-1. 다른 오디오가 재생 중이라면 중지 및 초기화 (safety check)
+            // 4-1. 다른 오디오가 재생 중이라면 중지 및 초기화 
             if (currentlyActiveAudio && currentlyActiveAudio.id !== audioId) {
                 const prevAudio = currentlyActiveAudio;
                 const originalPrevPlayer = document.querySelector(`.custom-audio-player[data-audio-id="${prevAudio.id}"]`);
@@ -1668,12 +1668,12 @@
         
         // --- 7. 드래그를 통한 재생 위치 이동 기능 (터치 포함) ---
         
-        // 탐색 위치를 계산하고 오디오 및 UI에 반영
+        // ⭐️ MODIFIED: 탐색 위치를 계산하고 UI에 반영. audio.currentTime 설정은 종료 시점에만 수행.
         function setSeekTime(event, progressBarContainer, audio) {
             const rect = progressBarContainer.getBoundingClientRect();
             const clientX = event.touches ? event.touches[0].clientX : event.clientX; 
             let seekPosition = (clientX - rect.left) / rect.width;
-            seekPosition = Math.max(0, Math.min(1, seekPosition)); // 0~1 사이로 제한
+            seekPosition = Math.max(0, Math.min(1, seekPosition)); 
             
             const progressFill = activePlayer.querySelector('.progress-fill');
             const timeDisplay = activePlayer.querySelector('.time-display');
@@ -1681,43 +1681,13 @@
             if (isFinite(audio.duration) && audio.duration > 0) {
                 const seekTime = seekPosition * audio.duration;
                 
-                // 드래그 중에는 UI만 실시간으로 업데이트
-                if (event.type === 'mousemove' || event.type === 'touchmove') {
-                    progressFill.style.width = seekPosition * 100 + '%';
-                    timeDisplay.textContent = `${formatTime(seekTime)} / ${formatTime(audio.duration)}`;
-                }
-                
-                // ⭐️ 핵심 FIX: 드래그 종료 시 실제 오디오 currentTime 업데이트 및 재생 상태 복구
-                if (event.type === 'mouseup' || event.type === 'touchend') {
-                    audio.currentTime = seekTime; // 👈 재생 위치 업데이트
-                    
-                    const btn = activePlayer.querySelector('.play-pause-btn');
+                // ⭐️ 핵심: UI만 실시간으로 업데이트. 실제 audio.currentTime은 handleSeekEnd에서 설정.
+                const percentage = seekPosition * 100;
+                progressFill.style.width = percentage + '%';
+                timeDisplay.textContent = `${formatTime(seekTime)} / ${formatTime(audio.duration)}`;
 
-                    // 탐색 전에 재생 중이었다면 다시 재생 시도
-                    if (wasPlayingBeforeSeek) { 
-                        audio.play().then(() => {
-                            btn.textContent = '⏸';
-                            btn.classList.add('playing');
-                            btn.dataset.state = 'playing';
-                            startProgressUpdate(audio.id, activePlayer);
-                        }).catch(error => {
-                            console.warn("Playback failed after seeking:", error);
-                            // 재생 실패 시 일시정지 상태 유지
-                            btn.textContent = '▶';
-                            btn.classList.remove('playing');
-                            btn.dataset.state = 'paused';
-                            stopProgressUpdate(audio.id);
-                            updateTimeDisplay(audio, activePlayer); 
-                        });
-                    } else {
-                         // 탐색 전에 일시정지 상태였다면 일시정지 상태로 유지하고 UI만 업데이트
-                        btn.textContent = '▶';
-                        btn.classList.remove('playing');
-                        btn.dataset.state = 'paused';
-                        stopProgressUpdate(audio.id);
-                        updateTimeDisplay(audio, activePlayer); // 최종 UI 업데이트
-                    }
-                }
+                // 계산된 시간을 activePlayer 요소에 저장하여 handleSeekEnd에서 사용
+                activePlayer.dataset.calculatedSeekTime = seekTime.toString();
             }
         }
         
@@ -1731,10 +1701,9 @@
             const audio = currentlyActiveAudio;
             if (!audio) return;
             
-            // ⭐️ FIX: 탐색 시작 시 오디오를 일시 정지하지 않습니다.
+            // ⭐️ FIX: 드래그 시작 시 오디오를 일시 정지하지 않습니다.
             wasPlayingBeforeSeek = !audio.paused; // 상태 저장
-            // audio.pause(); // <-- 이 라인을 제거했습니다.
-            stopProgressUpdate(audio.id); // UI 업데이트만 중지
+            stopProgressUpdate(audio.id); // UI 업데이트 타이머만 중지
             
             const progressBarContainer = event.currentTarget;
             activePlayer = progressBarContainer.closest('.custom-audio-player'); 
@@ -1745,7 +1714,7 @@
             document.addEventListener('touchmove', handleSeekMove, { passive: false });
             document.addEventListener('touchend', handleSeekEnd);
             
-            // 시작 위치 설정 (클릭/터치 시 바로 재생 위치 업데이트)
+            // 초기 위치 설정 (UI 업데이트)
             setSeekTime(event, progressBarContainer, audio);
         }
 
@@ -1756,6 +1725,7 @@
             event.stopPropagation(); // 이벤트 전파 방지
             
             const progressBarContainer = activePlayer.querySelector('.progress-bar-container');
+            // 드래그 중에는 setSeekTime을 호출하여 UI만 업데이트
             setSeekTime(event, progressBarContainer, currentlyActiveAudio);
         }
         
@@ -1763,30 +1733,62 @@
         function handleSeekEnd(event) {
             if (!isSeeking || !currentlyActiveAudio || !activePlayer) return;
             
+            // ⭐️ FIX: 이벤트 전파 방지
             if (event.type === 'mouseup' || event.type === 'touchend') {
-                 event.stopPropagation(); // 이벤트 전파 방지
+                 event.stopPropagation(); 
             }
 
             isSeeking = false;
             const audio = currentlyActiveAudio;
             const progressBarContainer = activePlayer.querySelector('.progress-bar-container');
 
-            // 최종 위치 설정 및 오디오 currentTime 반영 (여기서 실제 재생 위치 이동 및 재생 상태 결정)
-            setSeekTime(event, progressBarContainer, audio); 
+            // 1. 최종 위치 설정 및 오디오 currentTime 반영
+            setSeekTime(event, progressBarContainer, audio); // 최종 UI 업데이트
+            
+            const seekTime = parseFloat(activePlayer.dataset.calculatedSeekTime);
+            if (!isNaN(seekTime)) {
+                audio.currentTime = seekTime; // 👈 실제 오디오 재생 위치 설정
+            }
+            
+            // 2. 재생 상태 복구 (wasPlayingBeforeSeek 사용)
+            const btn = activePlayer.querySelector('.play-pause-btn');
 
-            // ⭐️ FIX: 탐색 종료 후 발생하는 click 이벤트를 handleOutsideClick에서 무시하도록 설정 (보조 방어)
+            // 탐색 전에 재생 중이었다면 다시 재생 시도
+            if (wasPlayingBeforeSeek) { 
+                audio.play().then(() => {
+                    // 성공적으로 재생 재개 시 UI 업데이트
+                    btn.textContent = '⏸';
+                    btn.classList.add('playing');
+                    btn.dataset.state = 'playing';
+                    startProgressUpdate(audio.id, activePlayer);
+                }).catch(error => {
+                    console.warn("Playback failed after seeking:", error);
+                    // 재생 실패 시 일시정지 상태 유지
+                    btn.textContent = '▶';
+                    btn.classList.remove('playing');
+                    btn.dataset.state = 'paused';
+                    stopProgressUpdate(audio.id);
+                    updateTimeDisplay(audio, activePlayer); 
+                });
+            } else {
+                // 탐색 전에 일시정지 상태였다면 일시정지 상태 유지 및 UI 업데이트
+                startProgressUpdate(audio.id, activePlayer); 
+                updateTimeDisplay(audio, activePlayer); 
+            }
+
+            // 3. 모바일 클릭 방어 플래그
             blockOutsideClick = true;
             setTimeout(() => {
                 blockOutsideClick = false;
             }, 300); 
             
-            // 이벤트 리스너 정리
+            // 4. 이벤트 리스너 정리
             document.removeEventListener('mousemove', handleSeekMove);
             document.removeEventListener('mouseup', handleSeekEnd);
             document.removeEventListener('touchmove', handleSeekMove);
             document.removeEventListener('touchend', handleSeekEnd);
             activePlayer = null;
-            wasPlayingBeforeSeek = false; // 상태 초기화
+            wasPlayingBeforeSeek = false; 
         }
 
         // 8. 오디오 컨텍스트 활성화 (iOS/Safari)
