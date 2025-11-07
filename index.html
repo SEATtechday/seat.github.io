@@ -1701,8 +1701,8 @@
             const audio = currentlyActiveAudio;
             if (!audio) return;
             
-            // ⭐️ FIX: 드래그 시작 시 오디오를 일시 정지하지 않습니다.
-            wasPlayingBeforeSeek = !audio.paused; // 상태 저장
+            // ⭐️ 재생 상태 저장: 드래그 시작 시 오디오를 일시 정지하지 않습니다.
+            wasPlayingBeforeSeek = !audio.paused; 
             stopProgressUpdate(audio.id); // UI 업데이트 타이머만 중지
             
             const progressBarContainer = event.currentTarget;
@@ -1733,7 +1733,6 @@
         function handleSeekEnd(event) {
             if (!isSeeking || !currentlyActiveAudio || !activePlayer) return;
             
-            // ⭐️ FIX: 이벤트 전파 방지
             if (event.type === 'mouseup' || event.type === 'touchend') {
                  event.stopPropagation(); 
             }
@@ -1742,18 +1741,26 @@
             const audio = currentlyActiveAudio;
             const progressBarContainer = activePlayer.querySelector('.progress-bar-container');
 
-            // 1. 최종 위치 설정 및 오디오 currentTime 반영
+            // 1. 최종 위치 설정 및 UI 반영 (calculatedSeekTime 업데이트)
             setSeekTime(event, progressBarContainer, audio); // 최종 UI 업데이트
             
             const seekTime = parseFloat(activePlayer.dataset.calculatedSeekTime);
+
             if (!isNaN(seekTime)) {
+                
+                // ⭐️⭐️ 핵심 FIX: 모바일에서 currentTime 변경을 강제하기 위해
+                // 재생 중이었다면, currentTime을 설정하기 전에 잠시 멈춥니다.
+                if(wasPlayingBeforeSeek) {
+                    audio.pause(); 
+                }
+
                 audio.currentTime = seekTime; // 👈 실제 오디오 재생 위치 설정
             }
             
-            // 2. 재생 상태 복구 (wasPlayingBeforeSeek 사용)
+            // 2. 재생 상태 복구 
             const btn = activePlayer.querySelector('.play-pause-btn');
 
-            // 탐색 전에 재생 중이었다면 다시 재생 시도
+            // 탐색 전에 재생 중이었다면 다시 재생 시도 (새 위치에서)
             if (wasPlayingBeforeSeek) { 
                 audio.play().then(() => {
                     // 성공적으로 재생 재개 시 UI 업데이트
@@ -1772,6 +1779,7 @@
                 });
             } else {
                 // 탐색 전에 일시정지 상태였다면 일시정지 상태 유지 및 UI 업데이트
+                // audio.pause()가 호출되었으므로, 오디오는 멈춘 상태입니다.
                 startProgressUpdate(audio.id, activePlayer); 
                 updateTimeDisplay(audio, activePlayer); 
             }
