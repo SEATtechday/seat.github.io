@@ -1428,6 +1428,9 @@
         let isSeeking = false; // 드래그 탐색 중인지 여부
         let activePlayer = null; // 현재 탐색 중인 플레이어 (드래그용, 주입된 플레이어 요소)
         let wasPlayingBeforeSeek = false; // 탐색 시작 전에 재생 중이었는지 확인
+        
+        // ⭐️ NEW: 모바일 터치/드래그 후 발생하는 원치 않는 클릭 이벤트를 무시하기 위한 플래그
+        let blockOutsideClick = false; 
 
         // 1. 시간 포맷 변환 함수
         function formatTime(seconds) {
@@ -1456,9 +1459,6 @@
             
             if (isFinite(audio.duration) && audio.duration > 0) {
                 const percentage = (audio.currentTime / audio.duration) * 100;
-                
-                // ⭐️ 수정: 탐색 중이 아닐 때만 transition을 허용합니다. (CSS에서 transition: none; 으로 설정되어 있으므로, 굳이 여기서 만질 필요는 없습니다.)
-                // progressFill.style.transition = isSeeking ? 'none' : 'width 0.5s linear'; 
                 
                 progressFill.style.width = percentage + '%';
                 timeDisplay.textContent = `${formatTime(audio.currentTime)} / ${formatTime(audio.duration)}`;
@@ -1510,11 +1510,14 @@
             isSeeking = false;
             activePlayer = null;
             wasPlayingBeforeSeek = false;
+            blockOutsideClick = false; // 안전을 위해 초기화
         }
 
         // 4. 재생/일시정지 버튼 클릭 처리 (playerElement는 주입된 복제 요소임)
         function playPauseAudio(event, audioId, playerElement) {
-            if (event) { event.stopPropagation(); } // 테이블 행 클릭 이벤트 방지
+            if (event) { 
+                event.stopPropagation(); // 테이블 행 클릭 이벤트 및 외부 클릭 이벤트 방지
+            } 
             const audio = document.getElementById(audioId);
             const btn = playerElement.querySelector('.play-pause-btn');
             
@@ -1623,6 +1626,11 @@
 
         // 6. 플레이어 외부 터치/클릭 시 동작 (Request 2)
         function handleOutsideClick(event) {
+            // ⭐️ NEW: 탐색 종료 직후 발생한 click/touchend 이벤트는 무시
+            if (blockOutsideClick) {
+                 return;
+            }
+
             let target = event.target; 
             let isInsidePlayer = false;
             
@@ -1670,12 +1678,11 @@
                 
                 // 드래그 중에는 UI만 실시간으로 업데이트
                 if (event.type === 'mousemove' || event.type === 'touchmove') {
-                    // ⭐️ 수정: 드래그 중에도 진행 바가 실시간으로 움직이도록 스타일 업데이트
                     progressFill.style.width = seekPosition * 100 + '%';
                     timeDisplay.textContent = `${formatTime(seekTime)} / ${formatTime(audio.duration)}`;
                 }
                 
-                // ⭐️ 핵심 수정: 드래그 종료 시 실제 오디오 currentTime 업데이트
+                // ⭐️ 핵심: 드래그 종료 시 실제 오디오 currentTime 업데이트
                 if (event.type === 'mouseup' || event.type === 'touchend') {
                     audio.currentTime = seekTime; // 👈 재생 위치 업데이트
                     
@@ -1706,6 +1713,9 @@
         // 7-1. 드래그 시작 처리 함수
         function handleSeekStart(event) {
             event.preventDefault(); 
+            // ⭐️ FIX: 이벤트 전파를 막아 handleOutsideClick이 실행되는 것을 방지
+            event.stopPropagation(); 
+            
             isSeeking = true;
             
             const audio = currentlyActiveAudio;
@@ -1733,6 +1743,8 @@
         function handleSeekMove(event) {
             if (!isSeeking || !currentlyActiveAudio || !activePlayer) return;
             event.preventDefault(); // 터치 스크롤 방지
+            // ⭐️ FIX: 이동 중에도 이벤트 전파를 막아 잠재적인 문제 방지
+            event.stopPropagation(); 
             
             const progressBarContainer = activePlayer.querySelector('.progress-bar-container');
             setSeekTime(event, progressBarContainer, currentlyActiveAudio);
@@ -1741,6 +1753,11 @@
         // 7-3. 드래그 종료 처리 함수
         function handleSeekEnd(event) {
             if (!isSeeking || !currentlyActiveAudio || !activePlayer) return;
+            
+            // ⭐️ FIX: 이벤트 전파를 막아 탐색 종료가 외부 클릭 이벤트로 오인되는 것을 방지
+            if (event.type === 'mouseup' || event.type === 'touchend') {
+                 event.stopPropagation(); 
+            }
 
             isSeeking = false;
             const audio = currentlyActiveAudio;
@@ -1748,6 +1765,12 @@
 
             // 최종 위치 설정 및 오디오 currentTime 반영 (여기서 실제 재생 위치 이동 및 재생 상태 결정)
             setSeekTime(event, progressBarContainer, audio); 
+
+            // ⭐️ FIX: 탐색 종료 후 발생하는 click 이벤트를 handleOutsideClick에서 무시하도록 설정
+            blockOutsideClick = true;
+            setTimeout(() => {
+                blockOutsideClick = false;
+            }, 300); // 300ms 동안 블록 유지 (모바일 브라우저의 click 이벤트 지연 시간을 고려)
             
             // 이벤트 리스너 정리
             document.removeEventListener('mousemove', handleSeekMove);
