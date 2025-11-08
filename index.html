@@ -172,21 +172,30 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.2em;
+    font-size: 1.2em; /* 재생 버튼 크기 유지 */
     cursor: pointer;
     margin-right: 10px;
     user-select: none; 
 
-    /* ⭐️⭐️⭐️ 추가된 부분: 폰트 렌더링 통일 ⭐️⭐️⭐️ */
-    font-family: -apple-system, BlinkMacSystemFont, "Malgun Gothic", "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif;
+    /* ⭐️⭐️ 폰트 스타일 강제: 'II'가 깨끗한 막대처럼 보이도록 */
+    font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
-    font-style: normal;
+    font-weight: 900; /* 굵게 만들어 막대처럼 보이게 */
 }
+
+/* ⭐️⭐️ 일시정지 상태 (II로 대체) 스타일 수정 */
 .play-pause-btn.playing {
-    font-size: 1.0em;
+    /* 기존 스타일 (유니코드 ⏸ 사용 시): */
+    /* font-size: 1.0em; 
     letter-spacing: -2px; 
-    padding-left: 1px; 
+    padding-left: 1px; */
+    
+    /* ⭐️ 'II'를 일시정지처럼 보이게 하기 위한 수정 */
+    font-size: 1.2em; /* 재생 버튼과 동일한 크기로 유지 */
+    letter-spacing: -0.2em; /* I I 사이 간격을 좁혀서 ⏸처럼 보이게 */
+    padding-right: 1px; /* 미세한 중앙 정렬 조정 */
+    padding-bottom: 2px; /* 세로 중앙 정렬 조정 */
 }
         
         /* 진행 바와 시간 표시를 감싸는 래퍼 */
